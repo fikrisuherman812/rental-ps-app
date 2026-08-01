@@ -1,15 +1,9 @@
 import streamlit as st
 import pandas as pd
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
-
-# Zonawaktu WIB (UTC+7)
-WIB = timezone(timedelta(hours=7))
-
-def get_now_wib():
-    return datetime.now(WIB).replace(tzinfo=None)
 
 # Custom CSS Tampilan Modern
 st.markdown("""
@@ -70,13 +64,27 @@ if st.sidebar.button("🚪 Logout"):
     st.session_state["user_role"] = None
     st.rerun()
 
+# --- FUNGSI SOUND NOTIFIKASI ---
+def play_alarm():
+    # URL suara bel/beep online
+    sound_url = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
+    st.components.v1.html(
+        f"""
+        <audio autoplay>
+            <source src="{sound_url}" type="audio/mp3">
+        </audio>
+        """,
+        height=0,
+    )
+
 # --- LOAD DATA ---
 def load_pemasukan():
     if os.path.exists(FILE_PEMASUKAN):
         df = pd.read_excel(FILE_PEMASUKAN)
+        df["Tanggal_DT"] = pd.to_datetime(df["Tanggal_DT"])
         return df
     else:
-        cols = ["No", "Hari", "Tanggal", "Nama Pelanggan", "No TV", "Type", "Jam Mulai", "Durasi (Jam)", "Jam Selesai", "Status", "Total (Rp)"]
+        cols = ["No", "Hari", "Tanggal", "Tanggal_DT", "Nama Pelanggan", "No TV", "Type", "Jam Mulai", "Durasi (Jam)", "Jam Selesai", "Status", "Total (Rp)"]
         df_empty = pd.DataFrame(columns=cols)
         df_empty.to_excel(FILE_PEMASUKAN, index=False)
         return df_empty
@@ -97,18 +105,18 @@ else:
 
 menu = st.sidebar.radio("Menu Utama:", menu_options)
 
-# 1. LIVE DASHBOARD TV & TIMER (PERBAIKAN SELISIH UTC/WIB)
+# 1. LIVE DASHBOARD TV & TIMER (DENGAN ALARM SUARA)
 if menu == "⏱️ Live Dashboard TV":
     st.subheader("📺 Live Monitoring TV")
-    now_wib = get_now_wib()
+    now = datetime.now()
     
     cols = st.columns(3)
+    ada_waktu_habis = False
     
     for no_tv in range(1, 7):
         col_idx = (no_tv - 1) % 3
         type_ps = TV_MAP.get(no_tv, "PS3")
         
-        # Cek transaksi aktif
         tv_active = df_in[(df_in["No TV"] == no_tv) & (df_in["Status"] == "AKTIF")] if not df_in.empty else pd.DataFrame()
         
         with cols[col_idx]:
@@ -118,13 +126,12 @@ if menu == "⏱️ Live Dashboard TV":
                 
                 jam_selesai_str = str(row["Jam Selesai"])
                 jam_mulai_str = str(row["Jam Mulai"])
-                tgl_str = str(row["Tanggal"]) # DD/MM/YYYY
+                tgl_dt = pd.to_datetime(row["Tanggal_DT"]).date()
                 
-                # Format objek Datetime berdasarkan Tanggal + Jam Selesai
-                target_selesai_dt = datetime.strptime(f"{tgl_str} {jam_selesai_str}", "%d/%m/%Y %H:%M")
+                jam_selesai_time = datetime.strptime(jam_selesai_str, "%H:%M").time()
+                target_selesai_dt = datetime.combine(tgl_dt, jam_selesai_time)
                 
-                # Hitung Selisih Waktu
-                sisa_detik = int((target_selesai_dt - now_wib).total_seconds())
+                sisa_detik = int((target_selesai_dt - now).total_seconds())
                 sisa_menit = sisa_detik // 60
                 
                 if sisa_detik > 0:
@@ -141,9 +148,11 @@ if menu == "⏱️ Live Dashboard TV":
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    # Update otomatis ke SELESAI jika waktu habis
+                    # Tandai bahwa ada waktu habis untuk membunyikan alarm
+                    ada_waktu_habis = True
                     df_in.at[idx, "Status"] = "SELESAI"
                     df_in.to_excel(FILE_PEMASUKAN, index=False)
+                    st.toast(f"🔔 WAKTU HABIS! TV {no_tv} ({row['Nama Pelanggan']})", icon="🔔")
                     st.rerun()
             else:
                 st.markdown(f"""
@@ -154,19 +163,20 @@ if menu == "⏱️ Live Dashboard TV":
                 </div>
                 """, unsafe_allow_html=True)
 
+    if ada_waktu_habis:
+        play_alarm()
+
     if st.button("🔄 Refresh Timer"):
         st.rerun()
 
 # 2. INPUT TRANSAKSI BARU
 elif menu == "📥 Input Transaksi":
     st.sidebar.subheader("Form Transaksi")
-    now_wib = get_now_wib()
-    
-    tanggal = st.sidebar.date_input("Tanggal", now_wib.date())
+    tanggal = st.sidebar.date_input("Tanggal", datetime.now())
     nama = st.sidebar.text_input("Nama Pelanggan")
     no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=6, value=1)
     durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
-    jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=now_wib.time(), key="input_jam_mulai")
+    jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=datetime.now().time(), key="input_jam_mulai")
 
     type_ps = TV_MAP.get(no_tv, "PS3")
     tarif = TARIF_PS.get(type_ps, 5000)
@@ -186,6 +196,7 @@ elif menu == "📥 Input Transaksi":
                 "No": no_baru,
                 "Hari": tanggal.strftime("%A"),
                 "Tanggal": tanggal.strftime("%d/%m/%Y"),
+                "Tanggal_DT": pd.to_datetime(tanggal),
                 "Nama Pelanggan": nama,
                 "No TV": no_tv,
                 "Type": type_ps,
@@ -223,7 +234,10 @@ elif menu == "➕ Tambah Durasi":
         if st.button("💾 Perbarui Durasi"):
             idx = df_in[df_in["No"] == no_transaksi].index[0]
             
-            jam_selesai_lama = datetime.strptime(f"{row_selected['Tanggal']} {row_selected['Jam Selesai']}", "%d/%m/%Y %H:%M")
+            tgl_dt = pd.to_datetime(row_selected["Tanggal_DT"]).date()
+            jam_selesai_time = datetime.strptime(str(row_selected['Jam Selesai']), "%H:%M").time()
+            
+            jam_selesai_lama = datetime.combine(tgl_dt, jam_selesai_time)
             jam_selesai_baru = jam_selesai_lama + timedelta(hours=tambah_jam)
             
             df_in.at[idx, "Durasi (Jam)"] += tambah_jam
@@ -239,7 +253,7 @@ elif menu == "📊 Laporan Keuangan (Owner)":
     st.subheader("📊 Laporan Pendapatan (Khusus Owner)")
     tot_pemasukan = df_in["Total (Rp)"].sum() if not df_in.empty else 0
     st.metric("Total Pemasukan All-Time", f"Rp {tot_pemasukan:,}")
-    st.dataframe(df_in, use_container_width=True)
+    st.dataframe(df_in.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
 # 5. EDIT & HAPUS DATA (KHUSUS OWNER)
 elif menu == "✏️ Edit / Hapus Data":
