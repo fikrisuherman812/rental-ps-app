@@ -2,106 +2,160 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, timedelta
+import time
 
-# Konfigurasi Halaman Web Streamlit
 st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
 
-# CSS Kustom untuk Mempercantik Tampilan UI
+# Custom CSS Tampilan Modern
 st.markdown("""
 <style>
-    /* Styling Header */
     .header-banner {
         background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
-        padding: 24px;
+        padding: 20px;
         border-radius: 12px;
         color: white;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        margin-bottom: 20px;
     }
-    .header-title {
-        font-size: 28px;
-        font-weight: bold;
-        margin: 0;
-    }
-    .header-subtitle {
-        font-size: 14px;
-        color: #a5b4fc;
-        margin-top: 4px;
-    }
-    /* Styling Cards Ringkasan Keuangan */
-    .metric-card {
-        padding: 18px;
+    .tv-card {
+        padding: 16px;
         border-radius: 10px;
         color: white;
-        font-weight: bold;
         text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        margin-bottom: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    .card-income { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
-    .card-expense { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); }
-    .card-profit { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); }
+    .tv-kosong { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+    .tv-terpakai { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); }
+    .tv-warning { background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); }
     
-    .card-label { font-size: 13px; text-transform: uppercase; opacity: 0.9; }
-    .card-value { font-size: 24px; margin-top: 6px; font-weight: 800; }
+    .tv-title { font-size: 20px; font-weight: bold; }
+    .tv-status { font-size: 14px; margin-top: 4px; text-transform: uppercase; }
+    .tv-detail { font-size: 12px; margin-top: 8px; opacity: 0.9; }
 </style>
 """, unsafe_allow_html=True)
 
-# File Penyimpanan Data
+# File Data
 FILE_PEMASUKAN = "data_pemasukan.xlsx"
-FILE_PENGELUARAN = "data_pengeluaran.xlsx"
-
 TARIF_PS = {"PS3": 5000, "PS4": 7500, "PS5": 12000}
-TV_MAP = {1: "PS3", 2: "PS4", 3: "PS3", 4: "PS5"}
+TV_MAP = {1: "PS3", 2: "PS4", 3: "PS3", 4: "PS5", 5: "PS4", 6: "PS5"}
 
-# --- FUNGSI LOAD DATA ---
+# --- SYSTEM LOGIN ---
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = None
+
+if st.session_state["user_role"] is None:
+    st.markdown("<h2 style='text-align: center;'>🔐 LOGIN RENTAL PLAYSTATION</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        pin = st.text_input("Masukkan PIN Akses:", type="password")
+        if st.button("Login", use_container_width=True):
+            if pin == "1234":  # PIN Karyawan
+                st.session_state["user_role"] = "Karyawan"
+                st.rerun()
+            elif pin == "9999":  # PIN Owner
+                st.session_state["user_role"] = "Owner"
+                st.rerun()
+            else:
+                st.error("PIN Salah! (Default Karyawan: 1234, Owner: 9999)")
+    st.stop()
+
+# Logout di Sidebar
+st.sidebar.write(f"👤 Login sebagai: **{st.session_state['user_role']}**")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state["user_role"] = None
+    st.rerun()
+
+# --- LOAD DATA ---
 def load_pemasukan():
     if os.path.exists(FILE_PEMASUKAN):
         df = pd.read_excel(FILE_PEMASUKAN)
         df["Tanggal_DT"] = pd.to_datetime(df["Tanggal_DT"])
         return df
     else:
-        cols = ["No", "Hari", "Tanggal", "Tanggal_DT", "Nama Pelanggan", "No TV", "Type", "Jam Mulai", "Durasi (Jam)", "Jam Selesai", "Total (Rp)"]
+        cols = ["No", "Hari", "Tanggal", "Tanggal_DT", "Nama Pelanggan", "No TV", "Type", "Jam Mulai", "Durasi (Jam)", "Jam Selesai", "Status", "Total (Rp)"]
         df_empty = pd.DataFrame(columns=cols)
         df_empty.to_excel(FILE_PEMASUKAN, index=False)
         return df_empty
 
-def load_pengeluaran():
-    if os.path.exists(FILE_PENGELUARAN):
-        df = pd.read_excel(FILE_PENGELUARAN)
-        df["Tanggal_DT"] = pd.to_datetime(df["Tanggal_DT"])
-        return df
-    else:
-        cols = ["No", "Hari", "Tanggal", "Tanggal_DT", "Keterangan", "Nominal (Rp)"]
-        df_empty = pd.DataFrame(columns=cols)
-        df_empty.to_excel(FILE_PENGELUARAN, index=False)
-        return df_empty
-
 df_in = load_pemasukan()
-df_out = load_pengeluaran()
 
-# Banner Header Keren
 st.markdown("""
 <div class="header-banner">
-    <div class="header-title">🎮 SISTEM MANAGEMENT RENTAL PLAYSTATION</div>
-    <div class="header-subtitle">Pencatatan Transaksi Pemasukan, Pengeluaran & Laporan Keuangan Real-Time</div>
+    <h2 style='margin:0;'>🎮 MONITORING & BILLING RENTAL PS</h2>
 </div>
 """, unsafe_allow_html=True)
 
-# --- MENU SIDEBAR ---
-st.sidebar.header("⚙️ Navigasi Utama")
-menu = st.sidebar.radio("Pilih Halaman:", [
-    "📥 Input Transaksi (Pemasukan)", 
-    "📤 Input Pengeluaran", 
-    "📊 Ringkasan Keuangan", 
-    "✏️ Kelola & Edit Data"
-])
+# NAVIGASI BERDASARKAN ROLE
+if st.session_state["user_role"] == "Owner":
+    menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi", "📊 Laporan Keuangan (Owner)", "✏️ Edit / Hapus Data"]
+else:
+    menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi"]
 
-# 1. INPUT PEMASUKAN
-if menu == "📥 Input Transaksi (Pemasukan)":
-    st.sidebar.subheader("Form Pemasukan Rental")
+menu = st.sidebar.radio("Menu Utama:", menu_options)
+
+# 1. LIVE DASHBOARD TV & TIMER
+if menu == "⏱️ Live Dashboard TV":
+    st.subheader("📺 Live Monitoring TV")
+    now = datetime.now()
+    
+    # Grid 3 Kolom untuk TV
+    cols = st.columns(3)
+    
+    for no_tv in range(1, 7):
+        col_idx = (no_tv - 1) % 3
+        type_ps = TV_MAP.get(no_tv, "PS3")
+        
+        # Cek transaksi aktif di TV ini
+        tv_active = df_in[(df_in["No TV"] == no_tv) & (df_in["Status"] == "AKTIF")] if not df_in.empty else pd.DataFrame()
+        
+        with cols[col_idx]:
+            if not tv_active.empty:
+                row = tv_active.iloc[-1]
+                tgl_str = str(row["Tanggal"])
+                jam_selesai_str = str(row["Jam Selesai"])
+                
+                # Parse Waktu Selesai
+                jam_selesai_dt = datetime.strptime(f"{tgl_str} {jam_selesai_str}", "%d/%m/%Y %H:%M")
+                sisa_detik = int((jam_selesai_dt - now).total_seconds())
+                
+                if sisa_detik > 0:
+                    sisa_menit = sisa_detik // 60
+                    card_class = "tv-warning" if sisa_menit < 10 else "tv-terpakai"
+                    st.markdown(f"""
+                    <div class="tv-card {card_class}">
+                        <div class="tv-title">TV {no_tv} ({type_ps})</div>
+                        <div class="tv-status">🔴 SEDANG MAIN</div>
+                        <div class="tv-detail">
+                            <b>Pelanggan:</b> {row['Nama Pelanggan']}<br>
+                            <b>Sisa Waktu:</b> {sisa_menit} Menit<br>
+                            <b>Selesai Jam:</b> {jam_selesai_str}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    # Update status ke SELESAI jika waktu habis
+                    idx = tv_active.index[-1]
+                    df_in.at[idx, "Status"] = "SELESAI"
+                    df_in.to_excel(FILE_PEMASUKAN, index=False)
+                    st.rerun()
+            else:
+                st.markdown(f"""
+                <div class="tv-card tv-kosong">
+                    <div class="tv-title">TV {no_tv} ({type_ps})</div>
+                    <div class="tv-status">🟢 KOSONG</div>
+                    <div class="tv-detail">Siap Disewa</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    if st.button("🔄 Refresh Timer"):
+        st.rerun()
+
+# 2. INPUT TRANSAKSI BARU
+elif menu == "📥 Input Transaksi":
+    st.sidebar.subheader("Form Transaksi")
     tanggal = st.sidebar.date_input("Tanggal", datetime.now())
     nama = st.sidebar.text_input("Nama Pelanggan")
-    no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=10, value=1)
+    no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=6, value=1)
     durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
     jam_mulai = st.sidebar.time_input("Jam Mulai", value=datetime.now().time())
 
@@ -112,11 +166,11 @@ if menu == "📥 Input Transaksi (Pemasukan)":
     waktu_mulai = datetime.combine(tanggal, jam_mulai)
     waktu_selesai = waktu_mulai + timedelta(hours=durasi)
 
-    st.sidebar.info(f"🎮 Type: **{type_ps}** | Tarif: **Rp{tarif:,}/jam**\n\n💵 Total Bayar: **Rp{total:,}**")
+    st.sidebar.info(f"🎮 Type: **{type_ps}** | Total: **Rp{total:,}**")
 
-    if st.sidebar.button("💾 Simpan Transaksi", use_container_width=True):
+    if st.sidebar.button("💾 Simpan & Mulai Main"):
         if not nama:
-            st.sidebar.error("Mohon isi nama pelanggan!")
+            st.sidebar.error("Mohon isi nama!")
         else:
             no_baru = len(df_in) + 1
             new_row = pd.DataFrame([{
@@ -130,118 +184,64 @@ if menu == "📥 Input Transaksi (Pemasukan)":
                 "Jam Mulai": jam_mulai.strftime("%H:%M"),
                 "Durasi (Jam)": durasi,
                 "Jam Selesai": waktu_selesai.time().strftime("%H:%M"),
+                "Status": "AKTIF",
                 "Total (Rp)": total
             }])
             df_in = pd.concat([df_in, new_row], ignore_index=True)
             df_in.to_excel(FILE_PEMASUKAN, index=False)
-            st.sidebar.success("✅ Transaksi Berhasil Disimpan!")
+            st.sidebar.success("✅ Transaksi Berhasil!")
             st.rerun()
 
-    st.subheader("📋 Riwayat Transaksi Pemasukan")
+# 3. FITUR TAMBAH DURASI
+elif menu == "➕ Tambah Durasi":
+    st.subheader("➕ Tambah Waktu Main (Extend)")
+    aktif_df = df_in[df_in["Status"] == "AKTIF"]
+    
+    if aktif_df.empty:
+        st.info("Saat ini tidak ada TV yang sedang dipakai.")
+    else:
+        list_aktif = [f"No {row['No']} - TV {row['No TV']} ({row['Nama Pelanggan']})" for idx, row in aktif_df.iterrows()]
+        pilihan = st.selectbox("Pilih Transaksi TV yang Ingin Ditambah Waktu:", list_aktif)
+        
+        no_transaksi = int(pilihan.split(" - ")[0].replace("No ", ""))
+        row_selected = df_in[df_in["No"] == no_transaksi].iloc[0]
+        
+        tambah_jam = st.number_input("Tambah Durasi (Jam):", min_value=1, value=1)
+        tarif_jam = TARIF_PS.get(row_selected["Type"], 5000)
+        biaya_tambah = tambah_jam * tarif_jam
+        
+        st.write(f"💵 Biaya Tambahan: **Rp {biaya_tambah:,}**")
+        
+        if st.button("💾 Perbarui Durasi"):
+            idx = df_in[df_in["No"] == no_transaksi].index[0]
+            
+            # Update jam selesai baru
+            jam_selesai_lama = datetime.strptime(f"{row_selected['Tanggal']} {row_selected['Jam Selesai']}", "%d/%m/%Y %H:%M")
+            jam_selesai_baru = jam_selesai_lama + timedelta(hours=tambah_jam)
+            
+            df_in.at[idx, "Durasi (Jam)"] += tambah_jam
+            df_in.at[idx, "Jam Selesai"] = jam_selesai_baru.time().strftime("%H:%M")
+            df_in.at[idx, "Total (Rp)"] += biaya_tambah
+            
+            df_in.to_excel(FILE_PEMASUKAN, index=False)
+            st.success("✅ Waktu Berhasil Ditambahkan!")
+            st.rerun()
+
+# 4. LAPORAN KEUANGAN (KHUSUS OWNER)
+elif menu == "📊 Laporan Keuangan (Owner)":
+    st.subheader("📊 Laporan Pendapatan (Khusus Owner)")
+    tot_pemasukan = df_in["Total (Rp)"].sum() if not df_in.empty else 0
+    st.metric("Total Pemasukan All-Time", f"Rp {tot_pemasukan:,}")
     st.dataframe(df_in.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
-# 2. INPUT PENGELUARAN
-elif menu == "📤 Input Pengeluaran":
-    st.sidebar.subheader("Form Pengeluaran Operasional")
-    tgl_out = st.sidebar.date_input("Tanggal", datetime.now())
-    ket_out = st.sidebar.text_input("Keterangan Pengeluaran")
-    nom_out = st.sidebar.number_input("Nominal (Rp)", min_value=1000, step=1000, value=10000)
-
-    if st.sidebar.button("💾 Simpan Pengeluaran", use_container_width=True):
-        if not ket_out:
-            st.sidebar.error("Isi keterangan pengeluaran!")
-        else:
-            no_baru = len(df_out) + 1
-            new_row = pd.DataFrame([{
-                "No": no_baru,
-                "Hari": tgl_out.strftime("%A"),
-                "Tanggal": tgl_out.strftime("%d/%m/%Y"),
-                "Tanggal_DT": pd.to_datetime(tgl_out),
-                "Keterangan": ket_out,
-                "Nominal (Rp)": nom_out
-            }])
-            df_out = pd.concat([df_out, new_row], ignore_index=True)
-            df_out.to_excel(FILE_PENGELUARAN, index=False)
-            st.sidebar.success("✅ Pengeluaran Berhasil Disimpan!")
-            st.rerun()
-
-    st.subheader("💸 Riwayat Pengeluaran Operasional")
-    st.dataframe(df_out.drop(columns=["Tanggal_DT"]), use_container_width=True)
-
-# 3. RINGKASAN KEUANGAN MODERN
-elif menu == "📊 Ringkasan Keuangan":
-    st.subheader("📊 Laporan & Analisis Keuangan")
-    
-    col_p, _ = st.columns([1, 2])
-    with col_p:
-        periode = st.selectbox("Filter Periode Laporan:", ["Harian", "Bulanan", "Tahunan"])
-    
-    df_in_filtered = df_in.copy()
-    df_out_filtered = df_out.copy()
-
-    if periode == "Harian":
-        pilih_tgl = st.date_input("Pilih Tanggal:", datetime.now())
-        if not df_in.empty: df_in_filtered = df_in[df_in["Tanggal_DT"].dt.date == pilih_tgl]
-        if not df_out.empty: df_out_filtered = df_out[df_out["Tanggal_DT"].dt.date == pilih_tgl]
-
-    elif periode == "Bulanan":
-        col_m, col_y = st.columns(2)
-        bulan = col_m.selectbox("Pilih Bulan:", list(range(1, 13)), index=datetime.now().month - 1)
-        tahun = col_y.number_input("Pilih Tahun:", value=datetime.now().year)
-        
-        if not df_in.empty: df_in_filtered = df_in[(df_in["Tanggal_DT"].dt.month == bulan) & (df_in["Tanggal_DT"].dt.year == tahun)]
-        if not df_out.empty: df_out_filtered = df_out[(df_out["Tanggal_DT"].dt.month == bulan) & (df_out["Tanggal_DT"].dt.year == tahun)]
-
-    elif periode == "Tahunan":
-        tahun = st.number_input("Pilih Tahun:", value=datetime.now().year)
-        if not df_in.empty: df_in_filtered = df_in[df_in["Tanggal_DT"].dt.year == tahun]
-        if not df_out.empty: df_out_filtered = df_out[df_out["Tanggal_DT"].dt.year == tahun]
-
-    # Hitung Kalkulasi Ringkasan
-    tot_pemasukan = df_in_filtered["Total (Rp)"].sum() if not df_in_filtered.empty else 0
-    tot_pengeluaran = df_out_filtered["Nominal (Rp)"].sum() if not df_out_filtered.empty else 0
-    keuntungan_bersih = tot_pemasukan - tot_pengeluaran
-
-    # Menampilkan Metric Cards Berwarna
-    m1, m2, m3 = st.columns(3)
-    m1.markdown(f"""
-    <div class="metric-card card-income">
-        <div class="card-label">🟢 Total Pemasukan</div>
-        <div class="card-value">Rp {tot_pemasukan:,}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    m2.markdown(f"""
-    <div class="metric-card card-expense">
-        <div class="card-label">🔴 Total Pengeluaran</div>
-        <div class="card-value">Rp {tot_pengeluaran:,}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    m3.markdown(f"""
-    <div class="metric-card card-profit">
-        <div class="card-label">💰 Keuntungan Bersih</div>
-        <div class="card-value">Rp {keuntungan_bersih:,}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Detail Tabel Menggunakan Tab
-    tab1, tab2 = st.tabs(["📋 Detail Pemasukan", "💸 Detail Pengeluaran"])
-    with tab1:
-        st.dataframe(df_in_filtered.drop(columns=["Tanggal_DT"]), use_container_width=True)
-    with tab2:
-        st.dataframe(df_out_filtered.drop(columns=["Tanggal_DT"]), use_container_width=True)
-
-# 4. EDIT & KELOLA DATA
-elif menu == "✏️ Kelola & Edit Data":
-    st.subheader("🛠️ Kelola / Hapus Data Transaksi")
+# 5. EDIT & HAPUS DATA (KHUSUS OWNER)
+elif menu == "✏️ Edit / Hapus Data":
+    st.subheader("🛠️ Kelola Data Transaksi")
     if not df_in.empty:
-        no_hapus = st.selectbox("Pilih No Pemasukan yang Akan Dihapus:", df_in["No"].tolist())
-        if st.button("❌ Hapus Pemasukan", type="primary"):
+        no_hapus = st.selectbox("Pilih No Transaksi yang Akan Dihapus:", df_in["No"].tolist())
+        if st.button("❌ Hapus Transaksi"):
             df_in = df_in[df_in["No"] != no_hapus]
             df_in["No"] = range(1, len(df_in) + 1)
             df_in.to_excel(FILE_PEMASUKAN, index=False)
-            st.success("✅ Data pemasukan terhapus!")
+            st.success("✅ Data berhasil dihapus!")
             st.rerun()
