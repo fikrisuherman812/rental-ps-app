@@ -2,8 +2,12 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, timedelta
+import zoneinfo
 
 st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
+
+# Zona waktu WIB (Asia/Jakarta)
+WIB = zoneinfo.ZoneInfo("Asia/Jakarta")
 
 # Custom CSS Tampilan Modern
 st.markdown("""
@@ -66,7 +70,6 @@ if st.sidebar.button("🚪 Logout"):
 
 # --- FUNGSI SOUND NOTIFIKASI ---
 def play_alarm():
-    # URL suara bel/beep online
     sound_url = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
     st.components.v1.html(
         f"""
@@ -105,10 +108,10 @@ else:
 
 menu = st.sidebar.radio("Menu Utama:", menu_options)
 
-# 1. LIVE DASHBOARD TV & TIMER (DENGAN ALARM SUARA)
+# 1. LIVE DASHBOARD TV & TIMER
 if menu == "⏱️ Live Dashboard TV":
     st.subheader("📺 Live Monitoring TV")
-    now = datetime.now()
+    now_wib = datetime.now(WIB).replace(tzinfo=None)
     
     cols = st.columns(3)
     ada_waktu_habis = False
@@ -124,14 +127,14 @@ if menu == "⏱️ Live Dashboard TV":
                 row = tv_active.iloc[-1]
                 idx = tv_active.index[-1]
                 
-                jam_selesai_str = str(row["Jam Selesai"])
-                jam_mulai_str = str(row["Jam Mulai"])
+                jam_selesai_str = str(row["Jam Selesai"]).strip()
+                jam_mulai_str = str(row["Jam Mulai"]).strip()
                 tgl_dt = pd.to_datetime(row["Tanggal_DT"]).date()
                 
                 jam_selesai_time = datetime.strptime(jam_selesai_str, "%H:%M").time()
                 target_selesai_dt = datetime.combine(tgl_dt, jam_selesai_time)
                 
-                sisa_detik = int((target_selesai_dt - now).total_seconds())
+                sisa_detik = int((target_selesai_dt - now_wib).total_seconds())
                 sisa_menit = sisa_detik // 60
                 
                 if sisa_detik > 0:
@@ -148,7 +151,6 @@ if menu == "⏱️ Live Dashboard TV":
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    # Tandai bahwa ada waktu habis untuk membunyikan alarm
                     ada_waktu_habis = True
                     df_in.at[idx, "Status"] = "SELESAI"
                     df_in.to_excel(FILE_PEMASUKAN, index=False)
@@ -172,11 +174,12 @@ if menu == "⏱️ Live Dashboard TV":
 # 2. INPUT TRANSAKSI BARU
 elif menu == "📥 Input Transaksi":
     st.sidebar.subheader("Form Transaksi")
-    tanggal = st.sidebar.date_input("Tanggal", datetime.now())
+    now_now = datetime.now(WIB)
+    tanggal = st.sidebar.date_input("Tanggal", now_now)
     nama = st.sidebar.text_input("Nama Pelanggan")
     no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=6, value=1)
     durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
-    jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=datetime.now().time(), key="input_jam_mulai")
+    jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=now_now.time(), key="input_jam_mulai")
 
     type_ps = TV_MAP.get(no_tv, "PS3")
     tarif = TARIF_PS.get(type_ps, 5000)
