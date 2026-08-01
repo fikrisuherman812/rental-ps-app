@@ -92,33 +92,38 @@ else:
 
 menu = st.sidebar.radio("Menu Utama:", menu_options)
 
-# 1. LIVE DASHBOARD TV & TIMER
+# 1. LIVE DASHBOARD TV & TIMER (PERBAIKAN PERHITUNGAN WAKTU)
 if menu == "⏱️ Live Dashboard TV":
     st.subheader("📺 Live Monitoring TV")
     now = datetime.now()
     
-    # Grid 3 Kolom untuk TV
     cols = st.columns(3)
     
     for no_tv in range(1, 7):
         col_idx = (no_tv - 1) % 3
         type_ps = TV_MAP.get(no_tv, "PS3")
         
-        # Cek transaksi aktif di TV ini
+        # Cek transaksi aktif
         tv_active = df_in[(df_in["No TV"] == no_tv) & (df_in["Status"] == "AKTIF")] if not df_in.empty else pd.DataFrame()
         
         with cols[col_idx]:
             if not tv_active.empty:
                 row = tv_active.iloc[-1]
-                tgl_str = str(row["Tanggal"])
-                jam_selesai_str = str(row["Jam Selesai"])
+                idx = tv_active.index[-1]
                 
-                # Parse Waktu Selesai
-                jam_selesai_dt = datetime.strptime(f"{tgl_str} {jam_selesai_str}", "%d/%m/%Y %H:%M")
-                sisa_detik = int((jam_selesai_dt - now).total_seconds())
+                jam_selesai_str = str(row["Jam Selesai"])
+                jam_mulai_str = str(row["Jam Mulai"])
+                tgl_dt = pd.to_datetime(row["Tanggal_DT"]).date()
+                
+                # Konversi waktu selesai ke objek Datetime presisi
+                jam_selesai_time = datetime.strptime(jam_selesai_str, "%H:%M").time()
+                target_selesai_dt = datetime.combine(tgl_dt, jam_selesai_time)
+                
+                # Hitung Sisa Waktu
+                sisa_detik = int((target_selesai_dt - now).total_seconds())
+                sisa_menit = sisa_detik // 60
                 
                 if sisa_detik > 0:
-                    sisa_menit = sisa_detik // 60
                     card_class = "tv-warning" if sisa_menit < 10 else "tv-terpakai"
                     st.markdown(f"""
                     <div class="tv-card {card_class}">
@@ -126,14 +131,13 @@ if menu == "⏱️ Live Dashboard TV":
                         <div class="tv-status">🔴 SEDANG MAIN</div>
                         <div class="tv-detail">
                             <b>Pelanggan:</b> {row['Nama Pelanggan']}<br>
-                            <b>Mulai:</b> {row['Jam Mulai']} | <b>Selesai:</b> {jam_selesai_str}<br>
+                            <b>Mulai:</b> {jam_mulai_str} | <b>Selesai:</b> {jam_selesai_str}<br>
                             <b>Sisa Waktu:</b> {sisa_menit} Menit
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    # Update status ke SELESAI jika waktu habis
-                    idx = tv_active.index[-1]
+                    # Update otomatis ke SELESAI jika waktu sudah habis
                     df_in.at[idx, "Status"] = "SELESAI"
                     df_in.to_excel(FILE_PEMASUKAN, index=False)
                     st.rerun()
@@ -149,15 +153,13 @@ if menu == "⏱️ Live Dashboard TV":
     if st.button("🔄 Refresh Timer"):
         st.rerun()
 
-# 2. INPUT TRANSAKSI BARU (JAM MULAI BISA DIUBAH MANUAL)
+# 2. INPUT TRANSAKSI BARU
 elif menu == "📥 Input Transaksi":
     st.sidebar.subheader("Form Transaksi")
     tanggal = st.sidebar.date_input("Tanggal", datetime.now())
     nama = st.sidebar.text_input("Nama Pelanggan")
     no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=6, value=1)
     durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
-    
-    # Menggunakan key stabil agar jam mulai bisa diedit manual
     jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=datetime.now().time(), key="input_jam_mulai")
 
     type_ps = TV_MAP.get(no_tv, "PS3")
@@ -216,7 +218,10 @@ elif menu == "➕ Tambah Durasi":
         if st.button("💾 Perbarui Durasi"):
             idx = df_in[df_in["No"] == no_transaksi].index[0]
             
-            jam_selesai_lama = datetime.strptime(f"{row_selected['Tanggal']} {row_selected['Jam Selesai']}", "%d/%m/%Y %H:%M")
+            tgl_dt = pd.to_datetime(row_selected["Tanggal_DT"]).date()
+            jam_selesai_time = datetime.strptime(str(row_selected['Jam Selesai']), "%H:%M").time()
+            
+            jam_selesai_lama = datetime.combine(tgl_dt, jam_selesai_time)
             jam_selesai_baru = jam_selesai_lama + timedelta(hours=tambah_jam)
             
             df_in.at[idx, "Durasi (Jam)"] += tambah_jam
