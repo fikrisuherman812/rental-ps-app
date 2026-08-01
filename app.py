@@ -2,36 +2,58 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
+st.set_page_config(page_title="Rental PS", layout="wide")
 st.title("🎮 DATABASE RENTAL PLAYSTATION")
 
-# Membuat koneksi ke Google Sheets
+# Koneksi ke Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Membaca data dari Google Sheets (misal Sheet1 atau Data Transaksi)
-df = conn.read(ttl=0) # ttl=0 agar data selalu paling baru (live)
+# Membaca data mulai dari baris header sebenarnya (header=1)
+df = conn.read(ttl=0, header=1)
 
-st.write("### Data Transaksi Terkini")
-st.dataframe(df)
+# Pilihan TV dan Type PS otomatis
+tv_type_map = {
+    1: "PS3",
+    2: "PS4",
+    3: "PS3",
+    4: "PS5"  # Sesuaikan tipe PS dengan nomor TV Anda jika ada
+}
 
-# Form Input Transaksi Baru
+# Sidebar Input Transaksi
 st.sidebar.header("Form Input Transaksi")
 tanggal = st.sidebar.date_input("Tanggal")
 nama = st.sidebar.text_input("Nama Pelanggan")
 no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=10, value=1)
 durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
 
+type_ps = tv_type_map.get(no_tv, "PS3")
+
 if st.sidebar.button("Simpan Transaksi"):
-    # Buat data baru
+    # Hitung nomor urut transaksi berikutnya
+    no_berikutnya = len(df) + 1
+    
+    # Format hari dan tanggal
+    hari_str = tanggal.strftime("%A")  # Atau isi manual
+    tgl_str = tanggal.strftime("%d/%m/%y")
+    
+    # Baris data baru sesuai struktur kolom di Sheets Anda
     new_data = pd.DataFrame([{
-        "Tanggal": str(tanggal),
-        "Nama Pelanggan": nama,
+        "Kupon": "None",
+        "No": no_berikutnya,
+        "Hari": hari_str,
+        "Tanggal": tgl_str,
         "No TV": no_tv,
+        "Type": type_ps,
         "Durasi": durasi
     }])
     
-    # Gabungkan dengan data lama dan simpan ke Google Sheets
+    # Gabungkan dan update ke Google Sheets
     updated_df = pd.concat([df, new_data], ignore_index=True)
     conn.update(data=updated_df)
     
-    st.sidebar.success("Transaksi Berhasil Disimpan ke Google Sheets!")
+    st.sidebar.success("✅ Transaksi Berhasil Disimpan!")
     st.rerun()
+
+# Tampilkan Tabel
+st.subheader("Data Transaksi Terkini")
+st.dataframe(df, use_container_width=True)
