@@ -3,8 +3,48 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Rental PS", layout="wide")
-st.title("🎮 DATABASE & KEUANGAN RENTAL PLAYSTATION")
+# Konfigurasi Halaman Web Streamlit
+st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
+
+# CSS Kustom untuk Mempercantik Tampilan UI
+st.markdown("""
+<style>
+    /* Styling Header */
+    .header-banner {
+        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+        padding: 24px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .header-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin: 0;
+    }
+    .header-subtitle {
+        font-size: 14px;
+        color: #a5b4fc;
+        margin-top: 4px;
+    }
+    /* Styling Cards Ringkasan Keuangan */
+    .metric-card {
+        padding: 18px;
+        border-radius: 10px;
+        color: white;
+        font-weight: bold;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .card-income { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+    .card-expense { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); }
+    .card-profit { background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); }
+    
+    .card-label { font-size: 13px; text-transform: uppercase; opacity: 0.9; }
+    .card-value { font-size: 24px; margin-top: 6px; font-weight: 800; }
+</style>
+""", unsafe_allow_html=True)
 
 # File Penyimpanan Data
 FILE_PEMASUKAN = "data_pemasukan.xlsx"
@@ -39,13 +79,21 @@ def load_pengeluaran():
 df_in = load_pemasukan()
 df_out = load_pengeluaran()
 
-# --- MENU NAVIGATION ---
-st.sidebar.header("⚙️ Menu Utama")
-menu = st.sidebar.radio("Pilih Menu:", [
+# Banner Header Keren
+st.markdown("""
+<div class="header-banner">
+    <div class="header-title">🎮 SISTEM MANAGEMENT RENTAL PLAYSTATION</div>
+    <div class="header-subtitle">Pencatatan Transaksi Pemasukan, Pengeluaran & Laporan Keuangan Real-Time</div>
+</div>
+""", unsafe_allow_html=True)
+
+# --- MENU SIDEBAR ---
+st.sidebar.header("⚙️ Navigasi Utama")
+menu = st.sidebar.radio("Pilih Halaman:", [
     "📥 Input Transaksi (Pemasukan)", 
     "📤 Input Pengeluaran", 
     "📊 Ringkasan Keuangan", 
-    "✏️ Edit / Hapus Data"
+    "✏️ Kelola & Edit Data"
 ])
 
 # 1. INPUT PEMASUKAN
@@ -64,11 +112,11 @@ if menu == "📥 Input Transaksi (Pemasukan)":
     waktu_mulai = datetime.combine(tanggal, jam_mulai)
     waktu_selesai = waktu_mulai + timedelta(hours=durasi)
 
-    st.sidebar.info(f"Type: **{type_ps}** | Total: **Rp{total:,}**")
+    st.sidebar.info(f"🎮 Type: **{type_ps}** | Tarif: **Rp{tarif:,}/jam**\n\n💵 Total Bayar: **Rp{total:,}**")
 
-    if st.sidebar.button("💾 Simpan Pemasukan"):
+    if st.sidebar.button("💾 Simpan Transaksi", use_container_width=True):
         if not nama:
-            st.sidebar.error("Isi nama pelanggan!")
+            st.sidebar.error("Mohon isi nama pelanggan!")
         else:
             no_baru = len(df_in) + 1
             new_row = pd.DataFrame([{
@@ -86,20 +134,20 @@ if menu == "📥 Input Transaksi (Pemasukan)":
             }])
             df_in = pd.concat([df_in, new_row], ignore_index=True)
             df_in.to_excel(FILE_PEMASUKAN, index=False)
-            st.sidebar.success("✅ Pemasukan Disimpan!")
+            st.sidebar.success("✅ Transaksi Berhasil Disimpan!")
             st.rerun()
 
-    st.subheader("📋 Riwayat Pemasukan Terkini")
+    st.subheader("📋 Riwayat Transaksi Pemasukan")
     st.dataframe(df_in.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
 # 2. INPUT PENGELUARAN
 elif menu == "📤 Input Pengeluaran":
-    st.sidebar.subheader("Form Pengeluaran")
+    st.sidebar.subheader("Form Pengeluaran Operasional")
     tgl_out = st.sidebar.date_input("Tanggal", datetime.now())
-    ket_out = st.sidebar.text_input("Keterangan Pengeluaran (Contoh: Beli Token, Service Stik)")
+    ket_out = st.sidebar.text_input("Keterangan Pengeluaran")
     nom_out = st.sidebar.number_input("Nominal (Rp)", min_value=1000, step=1000, value=10000)
 
-    if st.sidebar.button("💾 Simpan Pengeluaran"):
+    if st.sidebar.button("💾 Simpan Pengeluaran", use_container_width=True):
         if not ket_out:
             st.sidebar.error("Isi keterangan pengeluaran!")
         else:
@@ -114,69 +162,84 @@ elif menu == "📤 Input Pengeluaran":
             }])
             df_out = pd.concat([df_out, new_row], ignore_index=True)
             df_out.to_excel(FILE_PENGELUARAN, index=False)
-            st.sidebar.success("✅ Pengeluaran Disimpan!")
+            st.sidebar.success("✅ Pengeluaran Berhasil Disimpan!")
             st.rerun()
 
     st.subheader("💸 Riwayat Pengeluaran Operasional")
     st.dataframe(df_out.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
-# 3. RINGKASAN KEUANGAN
+# 3. RINGKASAN KEUANGAN MODERN
 elif menu == "📊 Ringkasan Keuangan":
-    st.subheader("📊 Laporan & Rekapitulasi Keuangan")
+    st.subheader("📊 Laporan & Analisis Keuangan")
     
-    periode = st.selectbox("Pilih Periode Laporan:", ["Harian", "Bulanan", "Tahunan"])
+    col_p, _ = st.columns([1, 2])
+    with col_p:
+        periode = st.selectbox("Filter Periode Laporan:", ["Harian", "Bulanan", "Tahunan"])
     
     df_in_filtered = df_in.copy()
     df_out_filtered = df_out.copy()
 
     if periode == "Harian":
         pilih_tgl = st.date_input("Pilih Tanggal:", datetime.now())
-        df_in_filtered = df_in[df_in["Tanggal_DT"].dt.date == pilih_tgl] if not df_in.empty else df_in
-        df_out_filtered = df_out[df_out["Tanggal_DT"].dt.date == pilih_tgl] if not df_out.empty else df_out
+        if not df_in.empty: df_in_filtered = df_in[df_in["Tanggal_DT"].dt.date == pilih_tgl]
+        if not df_out.empty: df_out_filtered = df_out[df_out["Tanggal_DT"].dt.date == pilih_tgl]
 
     elif periode == "Bulanan":
         col_m, col_y = st.columns(2)
         bulan = col_m.selectbox("Pilih Bulan:", list(range(1, 13)), index=datetime.now().month - 1)
         tahun = col_y.number_input("Pilih Tahun:", value=datetime.now().year)
         
-        if not df_in.empty:
-            df_in_filtered = df_in[(df_in["Tanggal_DT"].dt.month == bulan) & (df_in["Tanggal_DT"].dt.year == tahun)]
-        if not df_out.empty:
-            df_out_filtered = df_out[(df_out["Tanggal_DT"].dt.month == bulan) & (df_out["Tanggal_DT"].dt.year == tahun)]
+        if not df_in.empty: df_in_filtered = df_in[(df_in["Tanggal_DT"].dt.month == bulan) & (df_in["Tanggal_DT"].dt.year == tahun)]
+        if not df_out.empty: df_out_filtered = df_out[(df_out["Tanggal_DT"].dt.month == bulan) & (df_out["Tanggal_DT"].dt.year == tahun)]
 
     elif periode == "Tahunan":
         tahun = st.number_input("Pilih Tahun:", value=datetime.now().year)
-        if not df_in.empty:
-            df_in_filtered = df_in[df_in["Tanggal_DT"].dt.year == tahun]
-        if not df_out.empty:
-            df_out_filtered = df_out[df_out["Tanggal_DT"].dt.year == tahun]
+        if not df_in.empty: df_in_filtered = df_in[df_in["Tanggal_DT"].dt.year == tahun]
+        if not df_out.empty: df_out_filtered = df_out[df_out["Tanggal_DT"].dt.year == tahun]
 
-    # Hitung Total
+    # Hitung Kalkulasi Ringkasan
     tot_pemasukan = df_in_filtered["Total (Rp)"].sum() if not df_in_filtered.empty else 0
     tot_pengeluaran = df_out_filtered["Nominal (Rp)"].sum() if not df_out_filtered.empty else 0
     keuntungan_bersih = tot_pemasukan - tot_pengeluaran
 
-    # Dashboard Metric
-    col1, col2, col3 = st.columns(3)
-    col1.metric("🟢 Total Pemasukan", f"Rp{tot_pemasukan:,}")
-    col2.metric("🔴 Total Pengeluaran", f"Rp{tot_pengeluaran:,}")
-    col3.metric("💰 Keuntungan Bersih", f"Rp{keuntungan_bersih:,}")
+    # Menampilkan Metric Cards Berwarna
+    m1, m2, m3 = st.columns(3)
+    m1.markdown(f"""
+    <div class="metric-card card-income">
+        <div class="card-label">🟢 Total Pemasukan</div>
+        <div class="card-value">Rp {tot_pemasukan:,}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.write("### Detail Pemasukan")
+    m2.markdown(f"""
+    <div class="metric-card card-expense">
+        <div class="card-label">🔴 Total Pengeluaran</div>
+        <div class="card-value">Rp {tot_pengeluaran:,}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    m3.markdown(f"""
+    <div class="metric-card card-profit">
+        <div class="card-label">💰 Keuntungan Bersih</div>
+        <div class="card-value">Rp {keuntungan_bersih:,}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Detail Tabel Menggunakan Tab
+    tab1, tab2 = st.tabs(["📋 Detail Pemasukan", "💸 Detail Pengeluaran"])
+    with tab1:
         st.dataframe(df_in_filtered.drop(columns=["Tanggal_DT"]), use_container_width=True)
-    with c2:
-        st.write("### Detail Pengeluaran")
+    with tab2:
         st.dataframe(df_out_filtered.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
-# 4. EDIT / HAPUS DATA
-elif menu == "✏️ Edit / Hapus Data":
-    st.subheader("🛠️ Kelola / Hapus Data Pemasukan")
+# 4. EDIT & KELOLA DATA
+elif menu == "✏️ Kelola & Edit Data":
+    st.subheader("🛠️ Kelola / Hapus Data Transaksi")
     if not df_in.empty:
         no_hapus = st.selectbox("Pilih No Pemasukan yang Akan Dihapus:", df_in["No"].tolist())
-        if st.button("❌ Hapus Pemasukan"):
+        if st.button("❌ Hapus Pemasukan", type="primary"):
             df_in = df_in[df_in["No"] != no_hapus]
             df_in["No"] = range(1, len(df_in) + 1)
             df_in.to_excel(FILE_PEMASUKAN, index=False)
