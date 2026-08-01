@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-import time
 
 st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
 
@@ -127,8 +126,8 @@ if menu == "⏱️ Live Dashboard TV":
                         <div class="tv-status">🔴 SEDANG MAIN</div>
                         <div class="tv-detail">
                             <b>Pelanggan:</b> {row['Nama Pelanggan']}<br>
-                            <b>Sisa Waktu:</b> {sisa_menit} Menit<br>
-                            <b>Selesai Jam:</b> {jam_selesai_str}
+                            <b>Mulai:</b> {row['Jam Mulai']} | <b>Selesai:</b> {jam_selesai_str}<br>
+                            <b>Sisa Waktu:</b> {sisa_menit} Menit
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -150,14 +149,16 @@ if menu == "⏱️ Live Dashboard TV":
     if st.button("🔄 Refresh Timer"):
         st.rerun()
 
-# 2. INPUT TRANSAKSI BARU
+# 2. INPUT TRANSAKSI BARU (JAM MULAI BISA DIUBAH MANUAL)
 elif menu == "📥 Input Transaksi":
     st.sidebar.subheader("Form Transaksi")
     tanggal = st.sidebar.date_input("Tanggal", datetime.now())
     nama = st.sidebar.text_input("Nama Pelanggan")
     no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=6, value=1)
     durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
-    jam_mulai = st.sidebar.time_input("Jam Mulai", value=datetime.now().time())
+    
+    # Menggunakan key stabil agar jam mulai bisa diedit manual
+    jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=datetime.now().time(), key="input_jam_mulai")
 
     type_ps = TV_MAP.get(no_tv, "PS3")
     tarif = TARIF_PS.get(type_ps, 5000)
@@ -166,7 +167,7 @@ elif menu == "📥 Input Transaksi":
     waktu_mulai = datetime.combine(tanggal, jam_mulai)
     waktu_selesai = waktu_mulai + timedelta(hours=durasi)
 
-    st.sidebar.info(f"🎮 Type: **{type_ps}** | Total: **Rp{total:,}**")
+    st.sidebar.info(f"🎮 Type: **{type_ps}** | Total: **Rp{total:,}**\n\n⏰ Jam Selesai: **{waktu_selesai.time().strftime('%H:%M')}**")
 
     if st.sidebar.button("💾 Simpan & Mulai Main"):
         if not nama:
@@ -189,7 +190,7 @@ elif menu == "📥 Input Transaksi":
             }])
             df_in = pd.concat([df_in, new_row], ignore_index=True)
             df_in.to_excel(FILE_PEMASUKAN, index=False)
-            st.sidebar.success("✅ Transaksi Berhasil!")
+            st.sidebar.success("✅ Transaksi Berhasil Disimpan!")
             st.rerun()
 
 # 3. FITUR TAMBAH DURASI
@@ -215,7 +216,6 @@ elif menu == "➕ Tambah Durasi":
         if st.button("💾 Perbarui Durasi"):
             idx = df_in[df_in["No"] == no_transaksi].index[0]
             
-            # Update jam selesai baru
             jam_selesai_lama = datetime.strptime(f"{row_selected['Tanggal']} {row_selected['Jam Selesai']}", "%d/%m/%Y %H:%M")
             jam_selesai_baru = jam_selesai_lama + timedelta(hours=tambah_jam)
             
