@@ -3,11 +3,19 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta
 import zoneinfo
+try:
+    from streamlit_autorun import autorun
+except ImportError:
+    autorun = None
 
 st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
 
 # Zona waktu WIB (Asia/Jakarta)
 WIB = zoneinfo.ZoneInfo("Asia/Jakarta")
+
+# Auto refresh halaman setiap 10 detik agar timer & warna TV ter-update otomatis tanpa manual refresh
+if autorun:
+    autorun(interval=10000, key="auto_refresh_timer")
 
 # Custom CSS Tampilan Modern
 st.markdown("""
@@ -68,18 +76,6 @@ if st.sidebar.button("🚪 Logout"):
     st.session_state["user_role"] = None
     st.rerun()
 
-# --- FUNGSI SOUND NOTIFIKASI ---
-def play_alarm():
-    sound_url = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-    st.components.v1.html(
-        f"""
-        <audio autoplay>
-            <source src="{sound_url}" type="audio/mp3">
-        </audio>
-        """,
-        height=0,
-    )
-
 # --- LOAD DATA ---
 def load_pemasukan():
     if os.path.exists(FILE_PEMASUKAN):
@@ -102,7 +98,7 @@ st.markdown("""
 
 # NAVIGASI BERDASARKAN ROLE
 if st.session_state["user_role"] == "Owner":
-    menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi", "📊 Laporan Keuangan (Owner)", "✏️ Edit / Hapus Data"]
+    menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi", "📊 Laporan Keuangan (Owner)", "✏️ Edit & Hapus Data"]
 else:
     menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi"]
 
@@ -110,11 +106,12 @@ menu = st.sidebar.radio("Menu Utama:", menu_options)
 
 # 1. LIVE DASHBOARD TV & TIMER
 if menu == "⏱️ Live Dashboard TV":
-    st.subheader("📺 Live Monitoring TV")
+    st.subheader("📺 Live Monitoring TV (Auto-Update)")
     now_wib = datetime.now(WIB).replace(tzinfo=None)
     
     cols = st.columns(3)
     ada_waktu_habis = False
+    tv_habis_info = []
     
     for no_tv in range(1, 7):
         col_idx = (no_tv - 1) % 3
@@ -151,10 +148,11 @@ if menu == "⏱️ Live Dashboard TV":
                     </div>
                     """, unsafe_allow_html=True)
                 else:
+                    # Update status ke SELESAI
                     ada_waktu_habis = True
+                    tv_habis_info.append(f"TV {no_tv} ({row['Nama Pelanggan']})")
                     df_in.at[idx, "Status"] = "SELESAI"
                     df_in.to_excel(FILE_PEMASUKAN, index=False)
-                    st.toast(f"🔔 WAKTU HABIS! TV {no_tv} ({row['Nama Pelanggan']})", icon="🔔")
                     st.rerun()
             else:
                 st.markdown(f"""
@@ -165,11 +163,11 @@ if menu == "⏱️ Live Dashboard TV":
                 </div>
                 """, unsafe_allow_html=True)
 
+    # Pemutar Suara Alarm Bawaan
     if ada_waktu_habis:
-        play_alarm()
-
-    if st.button("🔄 Refresh Timer"):
-        st.rerun()
+        st.error(f"🔔 WAKTU HABIS! TV: {', '.join(tv_habis_info)}")
+        # Komponen Audio Streamlit (Pasti Bunyi)
+        st.audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3", autoplay=True)
 
 # 2. INPUT TRANSAKSI BARU
 elif menu == "📥 Input Transaksi":
@@ -258,14 +256,45 @@ elif menu == "📊 Laporan Keuangan (Owner)":
     st.metric("Total Pemasukan All-Time", f"Rp {tot_pemasukan:,}")
     st.dataframe(df_in.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
-# 5. EDIT & HAPUS DATA (KHUSUS OWNER)
-elif menu == "✏️ Edit / Hapus Data":
-    st.subheader("🛠️ Kelola Data Transaksi")
+# 5. EDIT & HAPUS DATA LENGKAP (KHUSUS OWNER)
+elif menu == "✏️ Edit & Hapus Data":
+    st.subheader("🛠️ Kelola & Edit Data Transaksi")
     if not df_in.empty:
-        no_hapus = st.selectbox("Pilih No Transaksi yang Akan Dihapus:", df_in["No"].tolist())
-        if st.button("❌ Hapus Transaksi"):
-            df_in = df_in[df_in["No"] != no_hapus]
-            df_in["No"] = range(1, len(df_in) + 1)
-            df_in.to_excel(FILE_PEMASUKAN, index=False)
-            st.success("✅ Data berhasil dihapus!")
-            st.rerun()
+        tab_edit, tab_hapus = st.tabs(["✏️ Edit Data Transaksi", "❌ Hapus Data Transaksi"])
+        
+        # TAB 1: EDIT DATA
+        with tab_edit:
+            list_edit = [f"No {row['No']} - TV {row['No TV']} ({row['Nama Pelanggan']})" for idx, row in df_in.iterrows()]
+            pilihan_edit = st.selectbox("Pilih Transaksi yang Ingin Di-edit:", list_edit)
+            
+            no_edit = int(pilihan_edit.split(" - ")[0].replace("No ", ""))
+            row_edit = df_in[df_in["No"] == no_edit].iloc[0]
+            idx_edit = df_in[df_in["No"] == no_edit].index[0]
+            
+            with st.form("form_edit_transaksi"):
+                new_nama = st.text_input("Nama Pelanggan:", value=row_edit["Nama Pelanggan"])
+                new_tv = st.number_input("No TV:", min_value=1, max_value=6, value=int(row_edit["No TV"]))
+                new_status = st.selectbox("Status Transaksi:", ["AKTIF", "SELESAI"], index=0 if row_edit["Status"] == "AKTIF" else 1)
+                new_total = st.number_input("Total Bayar (Rp):", min_value=0, value=int(row_edit["Total (Rp)"]))
+                
+                btn_simpan_edit = st.form_submit_button("💾 Simpan Perubahan Edit")
+                if btn_simpan_edit:
+                    df_in.at[idx_edit, "Nama Pelanggan"] = new_nama
+                    df_in.at[idx_edit, "No TV"] = new_tv
+                    df_in.at[idx_edit, "Type"] = TV_MAP.get(new_tv, "PS3")
+                    df_in.at[idx_edit, "Status"] = new_status
+                    df_in.at[idx_edit, "Total (Rp)"] = new_total
+                    
+                    df_in.to_excel(FILE_PEMASUKAN, index=False)
+                    st.success("✅ Data berhasil diperbarui!")
+                    st.rerun()
+
+        # TAB 2: HAPUS DATA
+        with tab_hapus:
+            no_hapus = st.selectbox("Pilih No Transaksi yang Akan Dihapus:", df_in["No"].tolist(), key="select_hapus")
+            if st.button("❌ Hapus Transaksi Ini", type="primary"):
+                df_in = df_in[df_in["No"] != no_hapus]
+                df_in["No"] = range(1, len(df_in) + 1)
+                df_in.to_excel(FILE_PEMASUKAN, index=False)
+                st.success("✅ Data berhasil dihapus!")
+                st.rerun()
