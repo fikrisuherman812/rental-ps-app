@@ -101,7 +101,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# NAVIGASI BERDASARKAN ROLE (VARIABEL MENU DIDEFINISIKAN DI SINI)
+# NAVIGASI BERDASARKAN ROLE
 if st.session_state["user_role"] == "Owner":
     menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi", "📊 Laporan Keuangan (Owner)", "✏️ Edit & Hapus Data"]
 else:
@@ -253,12 +253,58 @@ elif menu == "➕ Tambah Durasi":
             st.success("✅ Waktu Berhasil Ditambahkan!")
             st.rerun()
 
-# 4. LAPORAN KEUANGAN (KHUSUS OWNER)
+# 4. LAPORAN KEUANGAN (KHUSUS OWNER) - DENGAN FILTER PERIODE & REKAP
 elif menu == "📊 Laporan Keuangan (Owner)":
-    st.subheader("📊 Laporan Pendapatan (Khusus Owner)")
-    tot_pemasukan = df_in["Total (Rp)"].sum() if not df_in.empty else 0
-    st.metric("Total Pemasukan All-Time", f"Rp {tot_pemasukan:,}")
-    st.dataframe(df_in.drop(columns=["Tanggal_DT"]), use_container_width=True)
+    st.subheader("📊 Laporan Pendapatan & Filter Periode")
+    
+    if df_in.empty:
+        st.info("Belum ada data transaksi.")
+    else:
+        # Pilihan Filter Periode
+        col_f1, col_f2 = st.columns([1, 2])
+        with col_f1:
+            opsi_filter = st.selectbox(
+                "🗓️ Pilih Periode Laporan:",
+                ["Hari Ini", "Bulan Ini", "Semua Data (All-Time)", "Rentang Tanggal Kustom"]
+            )
+        
+        today = datetime.now(WIB).date()
+        df_filtered = df_in.copy()
+        
+        if opsi_filter == "Hari Ini":
+            df_filtered = df_filtered[df_filtered["Tanggal_DT"].dt.date == today]
+        elif opsi_filter == "Bulan Ini":
+            df_filtered = df_filtered[
+                (df_filtered["Tanggal_DT"].dt.year == today.year) & 
+                (df_filtered["Tanggal_DT"].dt.month == today.month)
+            ]
+        elif opsi_filter == "Rentang Tanggal Kustom":
+            with col_f2:
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    tgl_mulai = st.date_input("Mulai Tanggal:", today - timedelta(days=7))
+                with col_d2:
+                    tgl_akhir = st.date_input("Sampai Tanggal:", today)
+                
+                df_filtered = df_filtered[
+                    (df_filtered["Tanggal_DT"].dt.date >= tgl_mulai) & 
+                    (df_filtered["Tanggal_DT"].dt.date <= tgl_akhir)
+                ]
+
+        # Ringkasan Metrik
+        st.markdown("---")
+        total_pemasukan = df_filtered["Total (Rp)"].sum()
+        total_transaksi = len(df_filtered)
+        total_jam = df_filtered["Durasi (Jam)"].sum()
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("💰 Total Pemasukan", f"Rp {total_pemasukan:,}")
+        m2.metric("📋 Total Transaksi", f"{total_transaksi} Transaksi")
+        m3.metric("⏳ Total Jam Tersewa", f"{total_jam} Jam")
+        
+        st.markdown("---")
+        st.write(f"<b>Detail Data Transaksi ({opsi_filter}):</b>", unsafe_allow_html=True)
+        st.dataframe(df_filtered.drop(columns=["Tanggal_DT"]), use_container_width=True)
 
 # 5. EDIT & HAPUS DATA LENGKAP (KHUSUS OWNER)
 elif menu == "✏️ Edit & Hapus Data":
