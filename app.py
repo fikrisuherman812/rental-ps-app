@@ -1,15 +1,119 @@
-# --- FUNGSI SOUND NOTIFIKASI MEMAKAI AUDIO NATIVE STREAMLIT ---
+import streamlit as st
+import pandas as pd
+import os
+from datetime import datetime, timedelta
+import zoneinfo
+try:
+    from streamlit_autorun import autorun
+except ImportError:
+    autorun = None
+
+st.set_page_config(page_title="Rental PS Dashboard", page_icon="🎮", layout="wide")
+
+# Zona waktu WIB (Asia/Jakarta)
+WIB = zoneinfo.ZoneInfo("Asia/Jakarta")
+
+# Auto refresh halaman setiap 10 detik agar timer & warna TV ter-update otomatis
+if autorun:
+    autorun(interval=10000, key="auto_refresh_timer")
+
+# Custom CSS Tampilan Modern
+st.markdown("""
+<style>
+    .header-banner {
+        background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+        padding: 20px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 20px;
+    }
+    .tv-card {
+        padding: 16px;
+        border-radius: 10px;
+        color: white;
+        text-align: center;
+        margin-bottom: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .tv-kosong { background: linear-gradient(135deg, #059669 0%, #10b981 100%); }
+    .tv-terpakai { background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%); }
+    .tv-warning { background: linear-gradient(135deg, #d97706 0%, #f59e0b 100%); }
+    
+    .tv-title { font-size: 20px; font-weight: bold; }
+    .tv-status { font-size: 14px; margin-top: 4px; text-transform: uppercase; }
+    .tv-detail { font-size: 12px; margin-top: 8px; opacity: 0.9; }
+</style>
+""", unsafe_allow_html=True)
+
+# File Data
+FILE_PEMASUKAN = "data_pemasukan.xlsx"
+TARIF_PS = {"PS3": 5000, "PS4": 7500, "PS5": 12000}
+TV_MAP = {1: "PS3", 2: "PS4", 3: "PS3", 4: "PS5", 5: "PS4", 6: "PS5"}
+
+# --- SYSTEM LOGIN ---
+if "user_role" not in st.session_state:
+    st.session_state["user_role"] = None
+
+if st.session_state["user_role"] is None:
+    st.markdown("<h2 style='text-align: center;'>🔐 LOGIN RENTAL PLAYSTATION</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        pin = st.text_input("Masukkan PIN Akses:", type="password")
+        if st.button("Login", use_container_width=True):
+            if pin == "1234":  # PIN Karyawan
+                st.session_state["user_role"] = "Karyawan"
+                st.rerun()
+            elif pin == "9999":  # PIN Owner
+                st.session_state["user_role"] = "Owner"
+                st.rerun()
+            else:
+                st.error("PIN Salah! (Default Karyawan: 1234, Owner: 9999)")
+    st.stop()
+
+# Logout di Sidebar
+st.sidebar.write(f"👤 Login sebagai: **{st.session_state['user_role']}**")
+if st.sidebar.button("🚪 Logout"):
+    st.session_state["user_role"] = None
+    st.rerun()
+
+# --- FUNGSI SOUND NOTIFIKASI ---
 def play_sound_alarm():
     sound_url = "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"
-    # Menggunakan st.audio autoplay
     st.audio(sound_url, format="audio/mp3", autoplay=True)
+
+# --- LOAD DATA ---
+def load_pemasukan():
+    if os.path.exists(FILE_PEMASUKAN):
+        df = pd.read_excel(FILE_PEMASUKAN)
+        df["Tanggal_DT"] = pd.to_datetime(df["Tanggal_DT"])
+        return df
+    else:
+        cols = ["No", "Hari", "Tanggal", "Tanggal_DT", "Nama Pelanggan", "No TV", "Type", "Jam Mulai", "Durasi (Jam)", "Jam Selesai", "Status", "Total (Rp)"]
+        df_empty = pd.DataFrame(columns=cols)
+        df_empty.to_excel(FILE_PEMASUKAN, index=False)
+        return df_empty
+
+df_in = load_pemasukan()
+
+st.markdown("""
+<div class="header-banner">
+    <h2 style='margin:0;'>🎮 MONITORING & BILLING RENTAL PS</h2>
+</div>
+""", unsafe_allow_html=True)
+
+# NAVIGASI BERDASARKAN ROLE (VARIABEL MENU DIDEFINISIKAN DI SINI)
+if st.session_state["user_role"] == "Owner":
+    menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi", "📊 Laporan Keuangan (Owner)", "✏️ Edit & Hapus Data"]
+else:
+    menu_options = ["⏱️ Live Dashboard TV", "📥 Input Transaksi", "➕ Tambah Durasi"]
+
+menu = st.sidebar.radio("Menu Utama:", menu_options)
 
 # 1. LIVE DASHBOARD TV & TIMER
 if menu == "⏱️ Live Dashboard TV":
     st.subheader("📺 Live Monitoring TV (Auto-Update)")
     now_wib = datetime.now(WIB).replace(tzinfo=None)
     
-    # Tombol Manual Tes Suara
     with st.expander("🔊 Tes Suara Alarm (Klik di sini jika suara belum aktif)"):
         st.caption("Klik tombol di bawah untuk memancing izin suara dari browser:")
         if st.button("🔔 Coba Bunyikan Alarm"):
@@ -65,7 +169,134 @@ if menu == "⏱️ Live Dashboard TV":
                 </div>
                 """, unsafe_allow_html=True)
 
-    # Bunyikan alarm jika ada TV habis
     if tv_habis_info:
         st.error(f"🔔 WAKTU HABIS! {', '.join(tv_habis_info)}")
         play_sound_alarm()
+
+# 2. INPUT TRANSAKSI BARU
+elif menu == "📥 Input Transaksi":
+    st.sidebar.subheader("Form Transaksi")
+    now_now = datetime.now(WIB)
+    tanggal = st.sidebar.date_input("Tanggal", now_now)
+    nama = st.sidebar.text_input("Nama Pelanggan")
+    no_tv = st.sidebar.number_input("No TV", min_value=1, max_value=6, value=1)
+    durasi = st.sidebar.number_input("Durasi (Jam)", min_value=1, value=1)
+    jam_mulai = st.sidebar.time_input("Jam Mulai Manual:", value=now_now.time(), key="input_jam_mulai")
+
+    type_ps = TV_MAP.get(no_tv, "PS3")
+    tarif = TARIF_PS.get(type_ps, 5000)
+    total = durasi * tarif
+
+    waktu_mulai = datetime.combine(tanggal, jam_mulai)
+    waktu_selesai = waktu_mulai + timedelta(hours=durasi)
+
+    st.sidebar.info(f"🎮 Type: **{type_ps}** | Total: **Rp{total:,}**\n\n⏰ Jam Selesai: **{waktu_selesai.time().strftime('%H:%M')}**")
+
+    if st.sidebar.button("💾 Simpan & Mulai Main"):
+        if not nama:
+            st.sidebar.error("Mohon isi nama!")
+        else:
+            no_baru = len(df_in) + 1
+            new_row = pd.DataFrame([{
+                "No": no_baru,
+                "Hari": tanggal.strftime("%A"),
+                "Tanggal": tanggal.strftime("%d/%m/%Y"),
+                "Tanggal_DT": pd.to_datetime(tanggal),
+                "Nama Pelanggan": nama,
+                "No TV": no_tv,
+                "Type": type_ps,
+                "Jam Mulai": jam_mulai.strftime("%H:%M"),
+                "Durasi (Jam)": durasi,
+                "Jam Selesai": waktu_selesai.time().strftime("%H:%M"),
+                "Status": "AKTIF",
+                "Total (Rp)": total
+            }])
+            df_in = pd.concat([df_in, new_row], ignore_index=True)
+            df_in.to_excel(FILE_PEMASUKAN, index=False)
+            st.sidebar.success("✅ Transaksi Berhasil Disimpan!")
+            st.rerun()
+
+# 3. FITUR TAMBAH DURASI
+elif menu == "➕ Tambah Durasi":
+    st.subheader("➕ Tambah Waktu Main (Extend)")
+    aktif_df = df_in[df_in["Status"] == "AKTIF"]
+    
+    if aktif_df.empty:
+        st.info("Saat ini tidak ada TV yang sedang dipakai.")
+    else:
+        list_aktif = [f"No {row['No']} - TV {row['No TV']} ({row['Nama Pelanggan']})" for idx, row in aktif_df.iterrows()]
+        pilihan = st.selectbox("Pilih Transaksi TV yang Ingin Ditambah Waktu:", list_aktif)
+        
+        no_transaksi = int(pilihan.split(" - ")[0].replace("No ", ""))
+        row_selected = df_in[df_in["No"] == no_transaksi].iloc[0]
+        
+        tambah_jam = st.number_input("Tambah Durasi (Jam):", min_value=1, value=1)
+        tarif_jam = TARIF_PS.get(row_selected["Type"], 5000)
+        biaya_tambah = tambah_jam * tarif_jam
+        
+        st.write(f"💵 Biaya Tambahan: **Rp {biaya_tambah:,}**")
+        
+        if st.button("💾 Perbarui Durasi"):
+            idx = df_in[df_in["No"] == no_transaksi].index[0]
+            
+            tgl_dt = pd.to_datetime(row_selected["Tanggal_DT"]).date()
+            jam_selesai_time = datetime.strptime(str(row_selected['Jam Selesai']), "%H:%M").time()
+            
+            jam_selesai_lama = datetime.combine(tgl_dt, jam_selesai_time)
+            jam_selesai_baru = jam_selesai_lama + timedelta(hours=tambah_jam)
+            
+            df_in.at[idx, "Durasi (Jam)"] += tambah_jam
+            df_in.at[idx, "Jam Selesai"] = jam_selesai_baru.time().strftime("%H:%M")
+            df_in.at[idx, "Total (Rp)"] += biaya_tambah
+            
+            df_in.to_excel(FILE_PEMASUKAN, index=False)
+            st.success("✅ Waktu Berhasil Ditambahkan!")
+            st.rerun()
+
+# 4. LAPORAN KEUANGAN (KHUSUS OWNER)
+elif menu == "📊 Laporan Keuangan (Owner)":
+    st.subheader("📊 Laporan Pendapatan (Khusus Owner)")
+    tot_pemasukan = df_in["Total (Rp)"].sum() if not df_in.empty else 0
+    st.metric("Total Pemasukan All-Time", f"Rp {tot_pemasukan:,}")
+    st.dataframe(df_in.drop(columns=["Tanggal_DT"]), use_container_width=True)
+
+# 5. EDIT & HAPUS DATA LENGKAP (KHUSUS OWNER)
+elif menu == "✏️ Edit & Hapus Data":
+    st.subheader("🛠️ Kelola & Edit Data Transaksi")
+    if not df_in.empty:
+        tab_edit, tab_hapus = st.tabs(["✏️ Edit Data Transaksi", "❌ Hapus Data Transaksi"])
+        
+        with tab_edit:
+            list_edit = [f"No {row['No']} - TV {row['No TV']} ({row['Nama Pelanggan']})" for idx, row in df_in.iterrows()]
+            pilihan_edit = st.selectbox("Pilih Transaksi yang Ingin Di-edit:", list_edit)
+            
+            no_edit = int(pilihan_edit.split(" - ")[0].replace("No ", ""))
+            row_edit = df_in[df_in["No"] == no_edit].iloc[0]
+            idx_edit = df_in[df_in["No"] == no_edit].index[0]
+            
+            with st.form("form_edit_transaksi"):
+                new_nama = st.text_input("Nama Pelanggan:", value=row_edit["Nama Pelanggan"])
+                new_tv = st.number_input("No TV:", min_value=1, max_value=6, value=int(row_edit["No TV"]))
+                new_status = st.selectbox("Status Transaksi:", ["AKTIF", "SELESAI"], index=0 if row_edit["Status"] == "AKTIF" else 1)
+                new_total = st.number_input("Total Bayar (Rp):", min_value=0, value=int(row_edit["Total (Rp)"]))
+                
+                btn_simpan_edit = st.form_submit_button("💾 Simpan Perubahan Edit")
+                if btn_simpan_edit:
+                    df_in.at[idx_edit, "Nama Pelanggan"] = new_nama
+                    df_in.at[idx_edit, "No TV"] = new_tv
+                    df_in.at[idx_edit, "Type"] = TV_MAP.get(new_tv, "PS3")
+                    df_in.at[idx_edit, "Status"] = new_status
+                    df_in.at[idx_edit, "Total (Rp)"] = new_total
+                    
+                    df_in.to_excel(FILE_PEMASUKAN, index=False)
+                    st.success("✅ Data berhasil diperbarui!")
+                    st.rerun()
+
+        with tab_hapus:
+            no_hapus = st.selectbox("Pilih No Transaksi yang Akan Dihapus:", df_in["No"].tolist(), key="select_hapus")
+            if st.button("❌ Hapus Transaksi Ini", type="primary"):
+                df_in = df_in[df_in["No"] != no_hapus]
+                df_in["No"] = range(1, len(df_in) + 1)
+                df_in.to_excel(FILE_PEMASUKAN, index=False)
+                st.success("✅ Data berhasil dihapus!")
+                st.rerun()
